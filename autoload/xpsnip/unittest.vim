@@ -29,12 +29,22 @@ fun! s:ctx.Is( a, b, mes ) abort "{{{
     call self.True( a:a is a:b,
           \ "Expect is " . string(a:a) . " But " . string(a:b) . " " .a:mes )
 endfunction "}}}
+fun! s:ctx.Mes(case, actual) "{{{
+    let [desc, inp, outp] = a:case
+    let mes = join([
+          \ "case: '" . desc . "'",
+          \ '       input: ' . string(inp),
+          \ '    expected: ' . string(outp),
+          \ '      actual: ' . string(a:actual),
+          \ ], "\n")
+    return mes
+endfunction "}}}
 
 fun! xpsnip#unittest#Runall(ptn) abort "{{{
-    echom 'Unittest: autoload/xpsnip/ut/' . a:ptn . '.vim'
+    echo 'Unittest: autoload/xpsnip/ut/' . a:ptn . '.vim'
     try
         exe 'runtime!' 'autoload/xpsnip/ut/' . a:ptn . '.vim'
-        echom "All tests passed"
+        echo "All tests passed"
     catch /.*/
         " bla
     endtry
@@ -42,7 +52,7 @@ endfunction "}}}
 
 fun! xpsnip#unittest#RunMe( sid, fn ) abort "{{{
 
-    echom "Test: " . string(a:fn)
+    echo "Test: " . string(a:fn)
 
     let ff = s:GetTestFuncs( a:sid )
     let funcnames = keys( ff )
@@ -53,16 +63,16 @@ fun! xpsnip#unittest#RunMe( sid, fn ) abort "{{{
             continue
         endif
 
-        echom 'Case: ' . funcname
+        echo 'Case: ' . funcname
         let Func = ff[ funcname ]
 
         try
             call Func( s:ctx )
         catch /.*/
-            echom "    " a:fn
-            echom "    " funcname
-            echom "    " v:throwpoint
-            echom "Failure" v:exception
+            echo "    " a:fn
+            echo "    " funcname
+            echo "    " v:throwpoint
+            echo "Failure" v:exception
             throw "F"
         endtry
     endfor
