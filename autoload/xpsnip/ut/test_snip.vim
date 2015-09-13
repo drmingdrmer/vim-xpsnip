@@ -5,7 +5,9 @@ set cpo-=< cpo+=B
 
 fun! s:TestCompileLiteralString( t ) "{{{
 
-    let cases = [
+    let cases = []
+    " cases: invalid "{{{
+    let cases += [
           \ [ 'empty',
           \   '', 0,
           \   ['', 'EOF', 0],
@@ -35,7 +37,9 @@ fun! s:TestCompileLiteralString( t ) "{{{
           \   "'abc", 0,
           \   ['', 'EOF', 0],
           \ ],
-          \
+          \ ] "}}}
+    " cases: valid "{{{
+    let cases += [
           \ [ 'empty literal',
           \   "''", 0,
           \   ['', 'OK', 2],
@@ -65,7 +69,7 @@ fun! s:TestCompileLiteralString( t ) "{{{
           \   "'a''\"''b'", 0,
           \   ["a'\"'b", 'OK', 9],
           \ ],
-          \ ]
+          \ ] "}}}
 
     for [ case_desc, text, c, outp ] in cases
 
@@ -80,7 +84,88 @@ fun! s:TestCompileLiteralString( t ) "{{{
 
 endfunction "}}}
 
-fun! s:TestCompilePlaceHolderWithoutExpr( t ) "{{{
+fun! s:TestCompileRegExp(t) "{{{
+
+    let cases = []
+    " cases: eof "{{{
+    let cases += [
+          \ [ 'empty',
+          \   '', 0,
+          \   ['', 'EOF', 0],
+          \ ],
+          \ [ 'out of range',
+          \   '', 1,
+          \   ['', 'EOF', 1],
+          \ ],
+          \ [ 'out of range 5',
+          \   '', 5,
+          \   ['', 'EOF', 5],
+          \ ],
+          \ [ 'x is not single /',
+          \   'x', 0,
+          \   ['', 'InvalidInput', 0],
+          \ ],
+          \ [ '" is not single /',
+          \   '"', 0,
+          \   ['', 'InvalidInput', 0],
+          \ ],
+          \ [ 'need right /',
+          \   "/", 0,
+          \   ['', 'EOF', 0],
+          \ ],
+          \ [ 'need right / after abc',
+          \   "/abc", 0,
+          \   ['', 'EOF', 0],
+          \ ],
+          \ ] "}}}
+    " cases: valid "{{{
+    let cases += [
+          \ [ 'empty literal',
+          \   "//", 0,
+          \   ['', 'OK', 2],
+          \ ],
+          \ [ 'a',
+          \   "/a/", 0,
+          \   ['a', 'OK', 3],
+          \ ],
+          \ [ 'following content',
+          \   "/a/bb", 0,
+          \   ['a', 'OK', 3],
+          \ ],
+          \ ] "}}}
+    " cases: escaping "{{{
+    let cases += [
+          \ [ 'escaped',
+          \   '/\/\a/', 0,
+          \   ['/\a', 'OK', 6],
+          \ ],
+          \ [ 'incomplete escaped',
+          \   '/\/\/', 0,
+          \   ["", 'EOF', 0],
+          \ ],
+          \ [ 'trailing escaped',
+          \   '/\/\\/', 0,
+          \   ['/\', 'OK', 6],
+          \ ],
+          \ [ 'escaped after other',
+          \   '/a\/b\//', 0,
+          \   ["a/b/", 'OK', 8],
+          \ ],
+          \ ] "}}}
+
+    for [ case_desc, text, c, outp ] in cases
+
+        let actual = xpsnip#snip#CompileRegExp(text, c)
+        let mes = a:t.Mes([case_desc, [text, c], outp], actual)
+
+        call a:t.Eq( outp[0], actual[0], 'return-value of ' . mes )
+        call a:t.Eq( outp[1], actual[1], 'error-code of ' . mes )
+        call a:t.Eq( outp[2], actual[3], 'pos of ' . mes )
+
+    endfor
+endfunction "}}}
+
+fun! s:TestCompilePlaceHolder( t ) "{{{
 
     let cases = []
 
@@ -185,6 +270,10 @@ fun! s:TestCompilePlaceHolderWithoutExpr( t ) "{{{
           \   '${x[x]}', 0,
           \   [{}, 'InvalidPHIndex', 0],
           \ ],
+          \ [ 'bracket index: non-digit',
+          \   '${x[x1]}', 0,
+          \   [{}, 'InvalidPHIndex', 0],
+          \ ],
           \ [ 'bracket index: non-word',
           \   '${x[-]}', 0,
           \   [{}, 'InvalidPHIndex', 0],
@@ -215,6 +304,78 @@ fun! s:TestCompilePlaceHolderWithoutExpr( t ) "{{{
           \   [{}, 'NeedRightBracket', 0],
           \ ],
           \
+          \ ] "}}}
+    " cases: default value "{{{
+    let cases += [
+          \ [ 'incomplete ph with default value',
+          \   '${x:', 0,
+          \   [{}, 'EOF', 0],
+          \ ],
+          \ [ 'default value is empty expr',
+          \   '${x:}', 0,
+          \   [{'name' : 'x', 'def' : []}, 'OK', 5],
+          \ ],
+          \ [ 'default value is string abc',
+          \   '${x:abc}', 0,
+          \   [{'name' : 'x', 'def' : [['text', 'abc']]}, 'OK', 8],
+          \ ],
+          \ [ 'default value is literal abc',
+          \   "${x:'abc'}", 0,
+          \   [{'name' : 'x', 'def' : [['text', 'abc']]}, 'OK', 10],
+          \ ],
+          \ [ 'default value is quoted expression',
+          \   '${x:"abc$(y)"}', 0,
+          \   [{'name' : 'x',
+          \     'def' : [
+          \         ['text', 'abc'],
+          \         ['snip', {'snipname' : 'y',
+          \                   'param' : []
+          \                  }]
+          \     ]}, 'OK', 14],
+          \ ],
+          \ ] "}}}
+    " cases: reg transform "{{{
+    let cases += [
+          \ [ 'incomplete ph with reg',
+          \   '${x/', 0,
+          \   [{}, 'EOF', 0],
+          \ ],
+          \ [ 'incomplete reg /',
+          \   '${x/}', 0,
+          \   [{}, 'EOF', 0],
+          \ ],
+          \ [ 'incomplete reg /x',
+          \   '${x/x}', 0,
+          \   [{}, 'EOF', 0],
+          \ ],
+          \ [ 'incomplete reg /x/',
+          \   '${x/x/}', 0,
+          \   [{}, 'EOF', 0],
+          \ ],
+          \ [ 'incomplete reg /x/y',
+          \   '${x/x/y}', 0,
+          \   [{}, 'EOF', 0],
+          \ ],
+          \ [ 'reg /x/y/',
+          \   '${x/x/y/}', 0,
+          \   [{'name' : 'x', 'post' : [['snip', {'snipname' : 'regtrans',
+          \                                       'param' : [
+          \                                             [['text', 'x']],
+          \                                             [['text', 'y']],
+          \                                       ]},
+          \                             ]],
+          \    }, 'OK', 9],
+          \ ],
+          \ [ 'reg /\/x/}y/',
+          \   '${x/\/x/}y/}', 0,
+          \   [{'name' : 'x', 'post' : [['snip', {'snipname' : 'regtrans',
+          \                                       'param' : [
+          \                                             [['text', '/x']],
+          \                                             [['text', '}y']],
+          \                                       ]},
+          \                             ]],
+          \    }, 'OK', 12],
+          \ ],
           \ ] "}}}
 
     for [ case_desc, text, c, outp ] in cases
@@ -386,11 +547,11 @@ fun! s:TestCompileExpr( t ) "{{{
           \ ],
           \ [ 'out of range',
           \   '', 1, '',
-          \   [[], 'OK', 1],
+          \   [[], 'EOF', 1],
           \ ],
           \ [ 'out of range 5',
           \   'aa', 5, '',
-          \   [[], 'OK', 5],
+          \   [[], 'EOF', 5],
           \ ],
           \
           \ [ 'a',
@@ -406,14 +567,15 @@ fun! s:TestCompileExpr( t ) "{{{
           \   [[['text', 'bc']], 'OK', 3],
           \ ],
           \
-          \ [ 'escaped',
-          \   '\a\b\$\{\[\\a', 0, '',
-          \   [[['text', 'ab${[\a']], 'OK', 13],
+          \ [ 'unescape $ only',
+          \   '\a\b\$\\\$\{\[\\a\\$a', 0, '',
+          \   [[['text', '\a\b$\$\{\[\\a\'],
+          \     ['ph', {'name' : 'a'}]], 'OK', 21],
           \ ],
           \
           \ [ 'with space and escaped space',
           \   'a b\ c	d', 0, '',
-          \   [[['text', 'a b c	d']], 'OK', 8],
+          \   [[['text', 'a b\ c	d']], 'OK', 8],
           \ ],
           \ ] "}}}
     " cases: ph "{{{
@@ -465,7 +627,7 @@ fun! s:TestCompileExpr( t ) "{{{
           \ ],
           \
           \ [ 'string end at ", with space, reg',
-          \   'a "a', 0, '\v["]',
+          \   'a "a', 0, '"',
           \   [[['text', 'a ']], 'OK', 2],
           \ ],
           \
@@ -480,6 +642,11 @@ fun! s:TestCompileExpr( t ) "{{{
           \ [ 'end at <space>, complete expr',
           \   'a${x}a b', 0, ' ',
           \   [[['text', 'a'], ['ph', {'name':'x'}], ['text', 'a']], 'OK', 6],
+          \ ],
+          \
+          \ [ 'not end at escaped "',
+          \   'a\"a"b', 0, '"',
+          \   [[['text', 'a"a']], 'OK', 4],
           \ ],
           \
           \ ] "}}}
@@ -511,8 +678,6 @@ fun! s:TestCompileExpr( t ) "{{{
 
         let actual = xpsnip#snip#CompileExpr(text, c, endchar)
         let mes = a:t.Mes([case_desc, [text, c, endchar], outp], actual)
-
-        " echom string(actual)
 
         call a:t.Eq( outp[0], actual[0], 'return-value of ' . mes )
         call a:t.Eq( outp[1], actual[1], 'error-code of ' . mes )
